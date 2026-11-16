@@ -198,3 +198,101 @@ func (s *Store) Vorjahreswerte(jahr int) (map[string]int64, error) {
 	}
 	return out, rows.Err()
 }
+
+// ErrNichtGefunden meldet, dass ein Datensatz nicht existiert.
+var ErrNichtGefunden = errors.New("nicht gefunden")
+
+// BelegeAlle liefert die Belege aller Steuerjahre (neueste zuerst).
+func (s *Store) BelegeAlle() ([]modell.Beleg, error) {
+	rows, err := s.db.Query(`SELECT ` + belegSpalten + ` FROM beleg ORDER BY id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []modell.Beleg{}
+	for rows.Next() {
+		b, err := scanBeleg(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+// BelegLoeschen entfernt einen Beleg aus der Datenbank. Unbestätigte
+// Vorschläge des Belegs werden mitgelöscht; bestätigte Positionen bleiben
+// erhalten und verlieren nur die Verknüpfung. Die Datei selbst bleibt unberührt.
+func (s *Store) BelegLoeschen(id int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM position WHERE beleg_id = ? AND bestaetigt = 0`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE position SET beleg_id = NULL WHERE beleg_id = ?`, id); err != nil {
+		return err
+	}
+	res, err := tx.Exec(`DELETE FROM beleg WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNichtGefunden
+	}
+	return tx.Commit()
+}
+
+// Position liefert eine einzelne Position.
+func (s *Store) Position(id int64) (modell.Position, error) {
+	var p modell.Position
+	err := s.db.QueryRow(`SELECT `+posSpalten+` FROM position WHERE id = ?`, id).
+		Scan(&p.ID, &p.Steuerjahr, &p.BelegID, &p.Person, &p.Kategorie, &p.Bezeichnung, &p.BetragCent, &p.Datum, &p.Notiz, &p.Bestaetigt, &p.Vorschlag)
+	if errors.Is(err, sql.ErrNoRows) {
+		return p, ErrNichtGefunden
+	}
+	return p, err
+}
+
+// VorjahreswerteSetzen speichert mehrere Vorjahreswerte in einem Schritt
+// (alles oder nichts).
+func (s *Store) VorjahreswerteSetzen(werte []modell.Vorjahreswert) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, v := range werte {
+		if _, err := tx.Exec(`INSERT INTO vorjahreswert (steuerjahr, schluessel, betrag_cent) VALUES (?,?,?)
+			ON CONFLICT(steuerjahr, schluessel) DO UPDATE SET betrag_cent = excluded.betrag_cent`, v.Steuerjahr, v.Schluessel, v.BetragCent); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// VorjahreswertLoeschen entfernt einen Vorjahreswert.
+func (s *Store) VorjahreswertLoeschen(jahr int, schluessel string) error {
+	_, err := s.db.Exec(`DELETE FROM vorjahreswert WHERE steuerjahr = ? AND schluessel = ?`, jahr, schluessel)
+	return err
+}
+
+// PositionenZuBeleg liefert alle Positionen, die zu einem Beleg gehören.
+func (s *Store) PositionenZuBeleg(belegID int64) ([]modell.Position, error) {
+	rows, err := s.db.Query(`SELECT `+posSpalten+` FROM position WHERE beleg_id = ? ORDER BY id`, belegID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []modell.Position{}
+	for rows.Next() {
+		var p modell.Position
+		if err := rows.Scan(&p.ID, &p.Steuerjahr, &p.BelegID, &p.Person, &p.Kategorie, &p.Bezeichnung, &p.BetragCent, &p.Datum, &p.Notiz, &p.Bestaetigt, &p.Vorschlag); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}

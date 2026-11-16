@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Steuer – Hilfe für die Einkommensteuererklärung</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="sprung" href="#inhalt">Zum Inhalt springen</a>
+<header class="kopf">
+  <div class="kopfzeile">
+    <h1 class="titel">Steuer</h1>
+    <label class="jahrwahl">Steuerjahr
+      <select id="jahr" aria-label="Steuerjahr"></select>
+    </label>
+  </div>
+  <nav id="nav" aria-label="Hauptnavigation">
+    <a href="#/uebersicht" data-seite="uebersicht">Übersicht</a>
+    <a href="#/belege" data-seite="belege">Belege</a>
+    <a href="#/positionen" data-seite="positionen">Positionen</a>
+    <a href="#/angaben" data-seite="angaben">Angaben</a>
+    <a href="#/erklaerung" data-seite="erklaerung">Erklärung</a>
+    <a href="#/vorjahre" data-seite="vorjahre">Vorjahre</a>
+    <a href="#/checkliste" data-seite="checkliste">Checkliste</a>
+  </nav>
+</header>
+<div id="meldung" role="status" aria-live="polite"></div>
+<main id="inhalt" tabindex="-1"><p>Wird geladen …</p></main>
+<footer class="fuss">
+  Alles läuft nur auf diesem Rechner. Die Formularzeilen beruhen auf den Vordrucken 2025. Das Programm ersetzt keine Steuerberatung.
+</footer>
+<noscript><p>Diese Oberfläche braucht JavaScript.</p></noscript>
+<script src="app.js"></script>
+</body>
+</html>
