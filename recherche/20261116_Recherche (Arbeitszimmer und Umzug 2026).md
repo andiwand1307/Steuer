@@ -327,6 +327,10 @@ E. Nebenbedingungen / Warnungen
 
 ---
 
+## 12. Anwendung auf den Fall
+
+Ausgelagert in den nicht versionierten Ordner `unterlagen/` (persönliche Falldaten).
+
 ## Offene/unsichere Punkte
 
 1. **BMF 15.08.2023 nicht im Volltext gelesen.** Alle Rn.-Angaben (Rn. 3, 8, 12, 14–17, ca. 30) stammen aus Suchmaschinen-Auszügen und Sekundärquellen und widersprechen sich teilweise. Vor Übernahme ins Programm am Original prüfen (BStBl I 2023, 1551; LStH 2026 Anhang 19 I). Ein neueres BMF-Schreiben habe ich nicht gefunden; das ist ein Negativbefund.
@@ -342,4 +346,6 @@ E. Nebenbedingungen / Warnungen
 11. **BFH VIII R 20/25** (Musiker, Hauptsache anhängig) könnte die Mittelpunkt-Beurteilung für auftretende Selbständige verschieben. Beobachten.
 12. **Formulare 2026** noch nicht veröffentlicht; Zeilennummern (N 54–59, EÜR 65/66) sind Stand 2025.
 13. Einordnung der Moderation als § 15 oder § 18 (Anlage G/S, Gewerbesteuer) nicht geprüft.
-14. Technischer Hinweis: www.bundesfinanzministerium.de / esth.bundesfinanzministerium.de waren per Bot-Schutz gesperrt; gesetze-im-internet.de lieferte nur mit mehreren Neuversuchen. Ein Abgleich aller [stark evident]-Aussagen mit dem BMF-Original wird empfohlen, sobald der Zugang funktioniert.
+14. **Fall-spezifisch:** Ob die Moderationen im Hauptberuf prägend und außer Haus sind (Variante A/B), ist eine Wertungsfrage. Die „3-Tage-Regel“ als ausdrückliches BMF-Beispiel ist nicht verifiziert; verifiziert ist nur die „> 50 %-Regel“ (und diese gilt laut Wortlaut nur bei „nur einer“ Tätigkeit).
+15. **Mietzurechnung** bei alleiniger Nutzung in gemeinsam gemieteter Wohnung: keine BFH-Entscheidung zur häuslichen Konstellation gefunden; FG Niedersachsen 3 K 54/26 (außerhäuslich) nicht rechtskräftig, Revision BFH VI R 13/26 anhängig.
+16. Technischer Hinweis: www.bundesfinanzministerium.de / esth.bundesfinanzministerium.de waren per Bot-Schutz gesperrt; gesetze-im-internet.de lieferte nur mit mehreren Neuversuchen. Ein Abgleich aller [stark evident]-Aussagen mit dem BMF-Original wird empfohlen, sobald der Zugang funktioniert.
