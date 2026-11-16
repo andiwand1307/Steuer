@@ -1,24 +1,23 @@
 # Feldkatalog ESt - Hinweise (Stand 16.11.2026)
 
 ## Formularjahr
-- Verwendet: **Vordrucke/Anleitung Einkommensteuer 2025** (Ersatz fuer 2026).
-- Pruefung 2026: formulare-bfinv.de listet als neueste Auswahl "Einkommensteuer 2025" (est25); ELSTER-Hilfeseite fuer 2026 (help_est_ufa_10_2026) ist leer. Ein BMF-Schreiben vom 13.08.2026 zu Vordruckmustern 2026 wurde nur ueber eine Kopie (bvi.de, gesperrt) gefunden; bundesfinanzministerium.de lieferte 503 und konnte nicht geprueft werden.
-- Quelle aller Eintraege: ELSTER-Anleitung zur Einkommensteuererklaerung 2025 (amtliche Anleitung, HTML): https://www.elster.de/eportal/helpGlobal?themaGlobal=help_est_ufa_10_2025
-- Die PDF-Vordrucke selbst waren nicht ladbar (formulare-bfinv.de arbeitet mit JavaScript-Formularserver, keine direkten PDF-Links). Deshalb **keine Kennziffern** (Feld `kennziffer` = null) und keine Feldbezeichnungen aus den PDFs.
+- Verwendet: **amtliche Vordrucke Einkommensteuer 2025** (Ersatz fuer 2026). Pruefung 2026: Formularserver (formulare-bfinv.de) fuehrt als neuesten Ordner "Einkommensteuer 2025"; ELSTER-Hilfe fuer 2026 ist leer. bundesfinanzministerium.de nicht erreichbar (Bot-Schutz, 503).
+- Quellen: PDF-Vordrucke 2025 vom FMS (Stand 09-10/2025: ESt 1 A, Anlage N, N-Doppelte Haushaltsfuehrung, Kind, Vorsorgeaufwand, Sonderausgaben, Haushaltsnahe, Aussergewoehnliche Belastungen, AV, Sonstiges), ausgelesen mit pdftotext. Zeilennummern und Kennziffern stammen direkt aus den PDFs. Die URL (makePDF.do) liefert das PDF nur mit Browser-Sitzung (Cookie), nicht per einfachem curl.
+- Anlage EUER: ELSTER-Anleitung zur Anlage EUER 2025 (https://www.elster.de/eportal/helpGlobal?themaGlobal=help_euer_ufa_77_2025). Dort nur Zeilennummern, **keine Kennziffern** (Feld = null).
 
-## Bedeutung "sicher"
-Zeilennummer und Inhalt stehen ausdruecklich in der Anleitung 2025. "Zeile" ist oft ein Bereich ("57", "54-56"), wie in der Anleitung genannt.
+## Luecken / unsichere Stellen (8 von 175 Eintraegen "unsicher")
+- **Anlage G, Anlage S, AVEUER:** Das FMS stellt diese Vordrucke nicht bereit (Hinweis dort: Gewinneinkuenfte nur elektronisch). ELSTER-Hilfe hat dazu keine Zeilenanleitung. Keine Zeilen/Kennziffern; Eintraege nur als Platzhalter ohne Zeile. Gewerblich vs. freiberuflich: im EUER Z8 ("Einkunftsart") festzulegen.
+- **Gewerbesteuer:** separates Formular, nicht abgelesen.
+- **Lohnsteuerbescheinigung Nr. 3-7** (Brutto, LSt, SolZ, KiSt): auf den Vordrucken nicht aufgedruckt, aus Gedaechtnis. Verifiziert (auf den Vordrucken genannt) sind Nr. 8, 9, 10, 15, 17, 18, 22 a/b, 23 a/b, 24 a/b/c, 25, 26, 27, 29-32.
+- EUER: keine Kennziffern; Uebertragungszeile des Gewinns in Anlage G/S nicht ermittelt (nur Z95 "Gewinn/Verlust" aus der Anleitung).
+- Kinderbetreuung (Anlage Kind Z67/68): Zeilen/Kz abgelesen, Hoechstbetrag/Prozentsatz 2025 nicht gegen Gesetz geprueft. Anlage Kind Z6 (Kindergeld) hat Kz nicht eindeutig lesbar (leer gelassen).
+- Anlage N Z5: zwei Spalten (Kz 110 Steuerklasse 1-5, Kz 111 Steuerklasse 6); relevant ist 110.
+- Betraege/Hoechstgrenzen in "inhalt" stammen aus der ELSTER-Anleitung 2025.
 
-## Unsichere Stellen (19 Eintraege)
-- Anlage N Z5-9 (LSt, SolZ, KiSt) und Zuordnung Lohnsteuerbescheinigungs-Nr. -> Zeilen: in der Anleitung nicht enthalten; Nummern aus Erinnerung. Gegen Muster der Lohnsteuerbescheinigung 2025 und Anlage-N-PDF pruefen.
-- Anlage N: Faehr-/Flug-/Sammelbefoerderung (Z61/64 vs. 62-64 widerspruechlich), Z51 (steuerfreie AG-Leistungen).
-- Umzugskosten, Bewerbung, Kontofuehrung: Anleitung nennt nur den Bereich Z61-64, nicht die Einzelzeilen.
-- Hauptvordruck "Ergaenzende Angaben": Anleitung nennt Z37 und Z45.
-- Anlage G, S, EUER, AVEUER, Gewerbesteuer: nicht in der verfuegbaren Anleitung; keine Zeilen abgelesen. Gewerbe vs. freiberuflich offen.
-- Anlage Kind Z66-72 (Kinderbetreuung) nur indirekt zitiert; Anlage Sonstiges Z21.
+## Hinweis zur Vorversion
+Fruehere Zeilen aus der ELSTER-Hilfe waren bei Anlage N teils falsch zugeordnet (Reisekosten Z65-77 -> tatsaechlich Z66-68 mit Summe Z69 usw.); jetzt durch Vordruck ersetzt.
 
 ## Anfang 2027 zu aktualisieren
-1. Vordrucke/Anleitung 2026 laden (formulare-bfinv.de "Einkommensteuer 2026", ELSTER-Hilfe help_est_ufa_10_2026); alle Zeilen neu gegen 2026 abgleichen (Zeilen verschieben sich jaehrlich).
-2. Kennziffern aus den PDFs ergaenzen; formularjahr auf 2026, quelle auf PDF-URLs.
-3. Anlage G/S/EUER/AVEUER, LStB-Zuordnung nachtragen.
-4. Betraege 2026 pruefen (Pauschbetrag 1.230 EUR, Tagespauschale 6 EUR/210 Tage, Entfernungspauschale, Hoechstbetraege Haushaltsnahe, Kinderbetreuung).
+1. FMS-Ordner "Einkommensteuer 2026" laden (gleiches Verfahren), alle Zeilen/Kz gegen 2026 abgleichen; formularjahr und quelle anpassen.
+2. EUER 2026 aus ELSTER-Hilfe (themaGlobal help_euer_ufa_77_2026) neu lesen; G/S ueber ELSTER-Formular/Software pruefen.
+3. Hoechst-/Pauschbetraege 2026 pruefen (Pauschbetrag 1.230 EUR, Tagespauschale 6 EUR/210 Tage, Arbeitszimmer 1.260 EUR, Entfernungspauschale, Kinderbetreuung).
