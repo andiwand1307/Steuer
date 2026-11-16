@@ -79,7 +79,7 @@ func LadeRegelwerk(jahr int) (*Regelwerk, error) {
 			return nil, fmt.Errorf("regelwerk %d: Tarifzone %d ohne Teiler", jahr, i+1)
 		}
 		for _, p := range []struct {
-			s   string
+			s    string
 			ziel **big.Rat
 		}{{z.A, &zr.a}, {z.B, &zr.b}, {z.C, &zr.c}} {
 			r, ok := new(big.Rat).SetString(p.s)
