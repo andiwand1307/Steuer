@@ -98,6 +98,7 @@ func AngabeDefs(jahr int) []AngabeDef {
 			AngabeDef{x + "hotage_vor", "Homeoffice-Tage vor dem Umzug (ohne Umzug: ganzes Jahr)", g, "zahl", "Kalendertage, an denen die gesamte berufliche und betriebliche Tätigkeit überwiegend zu Hause ausgeübt und die erste Tätigkeitsstätte nicht aufgesucht wurde.", nil},
 			AngabeDef{x + "hotage_umzugsmonat", "davon Homeoffice-Tage im Umzugsmonat vor dem Umzugstag", g, "zahl", "Wird für die Kombination Jahrespauschale/Tagespauschale gebraucht (Monatsprinzip).", nil},
 			AngabeDef{x + "hotage_nach", "Homeoffice-Tage ab dem Umzug", g, "zahl", "", nil},
+			AngabeDef{x + "hotage_mit_neben", "davon Tage, an denen auch die selbständige Nebentätigkeit zu Hause ausgeübt wurde", g, "zahl", "Nur für diese Tage darf die Tagespauschale der EÜR zugeordnet werden (Anleitung Anlage N 2025, Zeile 58/59). Leer: keine Zuordnung zur EÜR.", nil},
 			AngabeDef{x + "anderer_arbeitsplatz", "Beim Arbeitgeber steht dauerhaft ein anderer Arbeitsplatz zur Verfügung", g, "jaNein", "Standard: ja. Nur bei 'nein' zählen auch Tage mit Fahrt zur Tätigkeitsstätte für die Tagespauschale (Anlage N Zeile 59).", nil},
 			AngabeDef{x + "hotage_mit_fahrt", "Tage mit Homeoffice UND Fahrt zur Tätigkeitsstätte (nur wenn kein anderer Arbeitsplatz)", g, "zahl", "", nil},
 			AngabeDef{x + "verpflegung_8h", "Dienstreisetage über 8 Stunden ohne Übernachtung", g, "zahl", "Nur die ersten 3 Monate an derselben auswärtigen Tätigkeitsstätte.", nil},

@@ -607,7 +607,7 @@ seiten.vorjahre = async () => {
         el('td', { class: 'betrag', text: euro(w.betrag_cent) }),
         el('td', { class: 'betrag', text: w.hat_aktuell ? euro(w.aktuell_cent) : '–' }),
         el('td', {}, !w.hat_aktuell ? '–' : w.abweichung_prozent === null || w.abweichung_prozent === undefined
-          ? (w.auffaellig ? marke('stark', '⚠ Vorjahr 0 €, jetzt ' + euro(w.aktuell_cent)) : '0 %')
+          ? (w.markierung ? marke('stark', '⚠ ' + w.markierung + ', Differenz ' + euro(w.differenz_cent)) : '0 %')
           : (w.auffaellig ? marke('stark', '⚠ ' + prozent(w.abweichung_prozent)) : prozent(w.abweichung_prozent))),
         el('td', {}, el('button', {
           class: 'gefahr', text: 'Löschen', onclick: async () => {

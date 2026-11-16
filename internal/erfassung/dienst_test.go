@@ -154,7 +154,7 @@ func TestDurchlauf(t *testing.T) {
 		t.Errorf("Datei = %q", b24[0].Datei)
 	}
 	pos, _ := s.Positionen(2024)
-	if len(pos) != 8 {
+	if len(pos) != 9 {
 		t.Errorf("Positionen 2024: %d", len(pos))
 	}
 	for _, p := range pos {

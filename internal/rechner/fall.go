@@ -19,6 +19,7 @@ type personDaten struct {
 	hoVor, hoUmzugsmonat, hoNach int64
 	andererArbeitsplatz          bool
 	hoMitFahrt                   int64
+	hoMitNeben                   int64
 	vpf8, vpfAnAb, vpf24         int64
 	vpfKuerzung, vpfErsatz       int64
 	kvZuschuss, krankengeld      bool
@@ -74,6 +75,7 @@ func leseFall(a *angaben, jahr int) *fall {
 			hoNach:              a.ganzzahl(x + "hotage_nach"),
 			andererArbeitsplatz: a.jaNein(x+"anderer_arbeitsplatz", true),
 			hoMitFahrt:          a.ganzzahl(x + "hotage_mit_fahrt"),
+			hoMitNeben:          a.ganzzahl(x + "hotage_mit_neben"),
 			vpf8:                a.ganzzahl(x + "verpflegung_8h"),
 			vpfAnAb:             a.ganzzahl(x + "verpflegung_anabreise"),
 			vpf24:               a.ganzzahl(x + "verpflegung_24h"),
@@ -81,6 +83,9 @@ func leseFall(a *angaben, jahr int) *fall {
 			vpfErsatz:           a.betrag(x + "verpflegung_ersatz"),
 			kvZuschuss:          a.jaNein(x+"kv_zuschuss", true),
 			krankengeld:         a.jaNein(x+"krankengeld", true),
+		}
+		if d.hoMitNeben > d.hoVor+d.hoNach {
+			a.fehl(x+"hotage_mit_neben", "darf nicht größer sein als alle Homeoffice-Tage")
 		}
 		if d.hoUmzugsmonat > d.hoVor {
 			a.fehl(x+"hotage_umzugsmonat", "darf nicht größer sein als die Homeoffice-Tage vor dem Umzug")

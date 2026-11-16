@@ -14,6 +14,7 @@ var textLohnsteuer = []string{
 	"5. Einbehaltener Solidaritätszuschlag von 3. 0,00",
 	"6. Einbehaltene Kirchensteuer des Arbeitnehmers von 3. 570,00",
 	"17. Steuerfreie Arbeitgeberleistungen für Fahrten zwischen Wohnung und Tätigkeitsstätte 312,50",
+	"18. Pauschal besteuerte Arbeitgeberleistungen für Fahrten zwischen Wohnung und Tätigkeitsstätte 120,00",
 	"22. a) Arbeitgeberanteil zur gesetzlichen Rentenversicherung 4.487,25",
 	"22. b) Arbeitgeberanteil zur Knappschaft 0,00",
 	"23. a) Arbeitnehmeranteil zur gesetzlichen Rentenversicherung 4.487,25",

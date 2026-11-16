@@ -372,14 +372,24 @@ func TestVorjahreUndUebersicht(t *testing.T) {
 			t.Errorf("lstb.3 Abweichung: %+v", z)
 		}
 	}
-	if p, auf := abweichung(1000, 1200); auf || *p != 20 {
+	if p, auf, _ := abweichung(1000, 1200); auf || *p != 20 {
 		t.Errorf("20 %% sind nicht auffällig")
 	}
-	if _, auf := abweichung(1000, 1260); !auf {
+	if _, auf, _ := abweichung(1000, 1260); !auf {
 		t.Errorf("26 %% sind auffällig")
 	}
-	if _, auf := abweichung(-1000, -1300); !auf {
+	if _, auf, _ := abweichung(-1000, -1300); !auf {
 		t.Errorf("-30 %% sind auffällig")
+	}
+	// Erstattung ↔ Nachzahlung oder Vorjahr 0: keine Prozentangabe, nur Markierung.
+	if p, auf, m := abweichung(50000, -20000); p != nil || !auf || m != "Vorzeichenwechsel" {
+		t.Errorf("Vorzeichenwechsel: %v %v %q", p, auf, m)
+	}
+	if p, auf, m := abweichung(0, 5000); p != nil || !auf || m == "" {
+		t.Errorf("Vorjahr 0: %v %v %q", p, auf, m)
+	}
+	if p, auf, _ := abweichung(0, 0); p != nil || auf {
+		t.Errorf("beide 0: %v %v", p, auf)
 	}
 	if w := u.anfrage("DELETE", "/api/vorjahre?jahr=2025&schluessel=lstb.3", nil); w.Code != 200 {
 		t.Errorf("Löschen: %d", w.Code)

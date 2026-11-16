@@ -410,13 +410,15 @@ func lstbNummer(low string) string {
 		return "26"
 	case has("krankenversicherung") && !strings.Contains(low, "arbeitgeber") && !strings.Contains(low, "privat"):
 		return "25"
+	case has("pauschal", "fahrten") || has("pauschal besteuert", "arbeitgeberleistung"):
+		return "18"
 	case has("arbeitgeberleistung") || (has("steuerfrei", "fahrten")):
 		return "17"
 	}
 	return ""
 }
 
-// lohnsteuerWerte liest die Nummern 3, 4, 5, 17, 22a, 23a, 25, 26, 27.
+// lohnsteuerWerte liest die Nummern 3, 4, 5, 17, 18, 22a, 23a, 25, 26, 27.
 func lohnsteuerWerte(zeilen []string) map[string]int64 {
 	out := map[string]int64{}
 	for i, z := range zeilen {
@@ -442,7 +444,7 @@ func lohnsteuerWerte(zeilen []string) map[string]int64 {
 	return out
 }
 
-var lstbReihenfolge = []string{"3", "4", "5", "17", "22a", "23a", "25", "26", "27"}
+var lstbReihenfolge = []string{"3", "4", "5", "17", "18", "22a", "23a", "25", "26", "27"}
 
 // ---- Steuerbescheid ----
 
@@ -520,7 +522,8 @@ var kategorieStichworte = []struct {
 	{"agb.krankheit", []string{"apotheke", "zahnarzt", "arzt ", "arztrechnung", "rezept", "brille", "krankenhaus", "physiotherapie"}},
 	{"n.fortbildung", []string{"seminar", "fortbildung", "lehrgang", "fachbuch", "kursgebühr", "webinar"}},
 	{"n.telefon_internet", []string{"mobilfunk", "internetanschluss", "telefonrechnung", "dsl"}},
-	{"n.arbeitsmittel", []string{"laptop", "notebook", "monitor", "tastatur", "schreibtisch", "bürostuhl", "drucker", "headset", "arbeitsmittel"}},
+	{"n.computer", []string{"laptop", "notebook", "computer", "tablet", "monitor", "tastatur", "drucker", "software"}},
+	{"n.arbeitsmittel", []string{"schreibtisch", "bürostuhl", "headset", "arbeitsmittel"}},
 }
 
 // vorschlagKategorie wählt die Kategorie für Belege ohne eigene Auswertung.

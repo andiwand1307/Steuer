@@ -18,6 +18,7 @@ const (
 	mpKeinRaum         = "kein Arbeitszimmer"
 	mpJa               = "ja"
 	mpRisiko           = "nur über einheitlichen Wirkungskreis"
+	mpVertretbar       = "vertretbar (Haupttätigkeit zu Hause), Nachweise nötig"
 	mpRegelmaessigNein = "regelmäßig nein"
 	mpNein             = "nein"
 	mpUnklar           = "unklar"
@@ -53,16 +54,21 @@ func (r *rechnung) azStatus() (string, string) {
 		return mpNein, "Für beide Tätigkeiten liegt der Schwerpunkt außer Haus (Fallgruppe 2)."
 	case an == optUnklar || ne == optUnklar:
 		return mpUnklar, "Mittelpunkt mindestens einer Tätigkeit ist nicht eingeschätzt."
+	case an == optJa:
+		return mpVertretbar, "Das Arbeitszimmer ist Mittelpunkt der Anstellung (angenommen als Haupttätigkeit), nicht aber der Nebentätigkeit außer Haus. Die Verwaltung geht in dieser Fallgruppe regelmäßig davon aus, dass es nicht Mittelpunkt der gesamten Betätigung ist (BFH VI R 27/02; BMF 15.08.2023); der BFH verlangt aber eine Gesamtwürdigung, bei der der Mittelpunkt der Haupttätigkeit den Mittelpunkt der Gesamttätigkeit indiziert (BFH 16.12.2004, IV R 19/03, BStBl II 2005, 212; BFH 09.08.2011, VIII R 5/09). Vertretbar, wenn die Anstellung deutlich überwiegt – " + nachweisListe + "."
 	case f.wirkungskreis:
 		return mpRisiko, "Das Arbeitszimmer ist nur für eine Tätigkeit Mittelpunkt (Fallgruppe 3). Abzug nur, weil ein einheitlicher Wirkungskreis angegeben ist – das muss nachgewiesen werden; hohes Risiko."
 	}
-	return mpRegelmaessigNein, "Das Arbeitszimmer ist nur für eine Tätigkeit Mittelpunkt (Fallgruppe 3). Nach Verwaltungsauffassung ist es dann regelmäßig nicht Mittelpunkt der gesamten Betätigung (BFH VI R 27/02; BMF 15.08.2023)."
+	return mpRegelmaessigNein, "Das Arbeitszimmer ist nur für die Nebentätigkeit Mittelpunkt, nicht für die Haupttätigkeit (Fallgruppe 3). Nach Verwaltungsauffassung ist es dann regelmäßig nicht Mittelpunkt der gesamten Betätigung (BFH VI R 27/02; BMF 15.08.2023)."
 }
 
 // azZulaessig meldet, ob ein Abzug nach Nr. 6b überhaupt in Betracht kommt.
 func azZulaessig(status string) bool {
-	return status == mpJa || status == mpRisiko || status == mpUnklar
+	return status == mpJa || status == mpVertretbar || status == mpRisiko || status == mpUnklar
 }
+
+// nachweisListe nennt die Nachweise für den Mittelpunkt im Arbeitszimmer.
+const nachweisListe = "nötige Nachweise: Tätigkeitsbeschreibung (qualitative Gleichwertigkeit der Arbeit zu Hause und im Büro), Arbeitgeberbestätigung (Homeoffice-Vereinbarung, Anteil der Homeoffice-Tage, Büroarbeitsplatz), Tageskalender 2026 (Ort und Stunden je Tätigkeit), Auftragsliste der Nebentätigkeit mit Zeitaufwand, Grundriss und Fotos des Raums"
 
 // hoErgebnis ist die Wirkung von Tagespauschale und Arbeitszimmer je Person.
 type hoErgebnis struct {
@@ -165,7 +171,8 @@ func (r *rechnung) homeoffice(p string) hoErgebnis {
 	}
 
 	neben := r.hatNeben && f.sPerson == p
-	// Aufteilung der Tage aus Zeile 58 und des 6b-Betrags.
+	// Aufteilung des 6b-Betrags (Anleitung Anlage N 2025 Zeile 57: nach
+	// Nutzungsumfang oder insgesamt einer Tätigkeit).
 	teile := func(n int64) (nN, nE int64) {
 		if !neben {
 			return n, 0
@@ -179,7 +186,19 @@ func (r *rechnung) homeoffice(p string) hoErgebnis {
 		}
 		return n, 0
 	}
+	// Tagespauschale: der EÜR nur Tage zuordnen, an denen (auch) die
+	// Nebentätigkeit zu Hause ausgeübt wurde (Anleitung Anlage N 2025 Zeile
+	// 58/59). In Arbeitszimmer-Varianten ist die Lage dieser Tage vor/nach dem
+	// Umzug nicht erfasst – dann konservativ keine Zuordnung zur EÜR.
 	h.tageN58, h.tageE = teile(tage58)
+	erlaubtE := min(d.hoMitNeben, tage58)
+	if azHier {
+		erlaubtE = 0
+	}
+	if h.tageE > erlaubtE {
+		h.tageN58 += h.tageE - erlaubtE
+		h.tageE = erlaubtE
+	}
 	h.tageN59 = tage59
 	h.tpN = (h.tageN58 + h.tageN59) * tag
 	h.tpE = h.tageE * tag

@@ -107,6 +107,8 @@ type vorjahrZeile struct {
 	HatAktuell    bool     `json:"hat_aktuell"`
 	AktuellCent   int64    `json:"aktuell_cent"`
 	AbweichungPro *float64 `json:"abweichung_prozent"`
+	DifferenzCent int64    `json:"differenz_cent"`
+	Markierung    string   `json:"markierung,omitempty"`
 	Auffaellig    bool     `json:"auffaellig"`
 }
 
@@ -172,7 +174,8 @@ func (s *Server) vorjahre(w http.ResponseWriter, r *http.Request) {
 		z := vorjahrZeile{Schluessel: k, Titel: vorjahrTitel(k), BetragCent: gespeichert[k]}
 		if a, ok := aktuellerWert(b, k); ok {
 			z.HatAktuell, z.AktuellCent = true, a
-			z.AbweichungPro, z.Auffaellig = abweichung(z.BetragCent, a)
+			z.AbweichungPro, z.Auffaellig, z.Markierung = abweichung(z.BetragCent, a)
+			z.DifferenzCent = a - z.BetragCent
 		}
 		zeilen = append(zeilen, z)
 	}
@@ -219,13 +222,20 @@ func (s *Server) vorjahre(w http.ResponseWriter, r *http.Request) {
 }
 
 // abweichung liefert die prozentuale Abweichung des aktuellen vom früheren
-// Wert; auffällig ab mehr als 25 %.
-func abweichung(frueher, aktuell int64) (*float64, bool) {
-	if frueher == 0 {
-		return nil, aktuell != 0
+// Wert; auffällig ab mehr als 25 %. Bei Vorjahreswert 0 oder Vorzeichenwechsel
+// (z.B. Erstattung ↔ Nachzahlung) ist eine Prozentangabe sinnlos: dann nur
+// Markierung, die absolute Differenz steht im Aufrufer.
+func abweichung(frueher, aktuell int64) (*float64, bool, string) {
+	switch {
+	case frueher == 0 && aktuell == 0:
+		return nil, false, ""
+	case frueher == 0:
+		return nil, true, "Vorjahr 0 €"
+	case (frueher < 0 && aktuell > 0) || (frueher > 0 && aktuell < 0):
+		return nil, true, "Vorzeichenwechsel"
 	}
 	d := float64(aktuell-frueher) / abs(float64(frueher)) * 100
-	return &d, d > 25 || d < -25
+	return &d, d > 25 || d < -25, ""
 }
 
 func abs(f float64) float64 {

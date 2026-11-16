@@ -3,6 +3,8 @@ package rechner
 import (
 	"errors"
 	"fmt"
+	"math/big"
+	"regexp"
 	"strings"
 	"time"
 
@@ -241,6 +243,8 @@ func risikoText(status, text string, nachweise bool) string {
 			return "Risiko mittel: Mittelpunkt nach Selbsteinschätzung erfüllt und Nachweise vorhanden."
 		}
 		return "Risiko erhöht: Mittelpunkt nach Selbsteinschätzung erfüllt, aber ohne Nachweise."
+	case mpVertretbar:
+		return "Risiko mittel: vertretbar, wenn die Anstellung als Haupttätigkeit deutlich überwiegt; das Finanzamt folgt nach Verwaltungsauffassung eher nicht – " + nachweisListe + "."
 	case mpRegelmaessigNein:
 		return "Risiko hoch / nach Verwaltungsauffassung regelmäßig NICHT abziehbar: " + text + " Nur mit Steuerberater."
 	}
@@ -358,19 +362,34 @@ func (r *rechnung) rechne() {
 	}
 }
 
-// gwgFilter summiert Positionen bis zur GWG-Grenze; größere werden nicht
-// gerechnet (AfA nötig).
-func (r *rechnung) gwgFilter(kat, person, ort string) (summe int64, n int) {
-	grenze := r.rw.cent("wk.gwg_grenze")
+// gwgFilter summiert Arbeitsmittel bis zur GWG-Grenze von 800 € netto
+// (ohne Umsatzsteuer, auch ohne Vorsteuerabzug). Positionen sind
+// Bruttobeträge: bis 800 € sicher, bis 952 € (Brutto bei 19 % USt) mit
+// Prüfhinweis, darüber nicht gerechnet (AfA nötig). Positionen, deren
+// Bezeichnung mit "AfA" beginnt, sind bereits Jahres-AfA-Beträge.
+func (r *rechnung) gwgFilter(kat, person, ort string) (summe int64, n int, si string) {
+	rw := r.rw
+	netto := rw.cent("wk.gwg_grenze")
+	brutto := rw.cent("wk.gwg_grenze_brutto_19")
+	si = rw.si("wk.gwg_grenze")
 	for _, p := range r.pos.liste(kat, person) {
-		if p.BetragCent > grenze {
-			r.hinweis("warnung", "Arbeitsmittel über 800 €", fmt.Sprintf("%s: %q (%s) übersteigt die GWG-Grenze von %s und ist NICHT gerechnet. Abschreibung über die Nutzungsdauer nötig; Computer/Software ggf. 1 Jahr Nutzungsdauer (BMF 22.02.2022, für 2026 nicht verifiziert). Ob die Grenze brutto oder netto gilt (Arbeitnehmer/Kleinunternehmer), ist widersprüchlich belegt.", ort, p.Bezeichnung, euro(p.BetragCent), euro(grenze)))
+		afa := strings.HasPrefix(strings.ToLower(strings.TrimSpace(p.Bezeichnung)), "afa")
+		switch {
+		case p.BetragCent <= netto:
+		case afa:
+			si = schwaechste(si, StarkEvident)
+			r.hinweis("pruefen", "AfA-Position", fmt.Sprintf("%s: %q (%s) ist als Jahres-AfA angesetzt. Bitte Anschaffungskosten, Nutzungsdauer und Monatsanteil im Anschaffungsjahr belegen.", ort, p.Bezeichnung, euro(p.BetragCent)))
+		case p.BetragCent <= brutto:
+			si = schwaechste(si, rw.si("wk.gwg_grenze_brutto_19"))
+			r.hinweis("pruefen", "Arbeitsmittel zwischen 800 € und 952 € brutto", fmt.Sprintf("%s: %q (%s) ist sofort angesetzt, weil die GWG-Grenze 800 € ohne Umsatzsteuer beträgt (bei 19 %% USt bis 952 € brutto). Bitte den Nettobetrag der Rechnung prüfen: bei 7 %% USt liegt die Grenze bei 856 € brutto, ohne ausgewiesene USt bei 800 €. Liegt der Nettobetrag über 800 €, ist nur die Abschreibung abziehbar.", ort, p.Bezeichnung, euro(p.BetragCent)))
+		default:
+			r.hinweis("warnung", "Wirtschaftsgut über der GWG-Grenze", fmt.Sprintf("%s: %q (%s) übersteigt 800 € netto und ist NICHT gerechnet. Abziehbar ist nur die Abschreibung: Anschaffungskosten ÷ betriebsgewöhnliche Nutzungsdauer, im Anschaffungsjahr zeitanteilig ab dem Anschaffungsmonat. Bitte den Jahresbetrag als eigene Position mit einer Bezeichnung, die mit „AfA“ beginnt (z.B. „AfA Schreibtisch, 8 von 12 Monaten“), erfassen und diese Position verwerfen. Computerhardware und Software bitte in der Kategorie „Computerhardware und Software“ erfassen – sie sind im Anschaffungsjahr voll abziehbar.", ort, p.Bezeichnung, euro(p.BetragCent)))
 			continue
 		}
 		summe += p.BetragCent
 		n++
 	}
-	return summe, n
+	return summe, n, si
 }
 
 // anlageN rechnet die Einkünfte § 19 einer Person.
@@ -383,7 +402,10 @@ func (r *rechnung) anlageN(p string, h hoErgebnis) (einkuenfte int64, aktiv bool
 		return 0, false
 	}
 	const fN = "Anlage N"
-	lstbSi := Unsicher // Nummern 3-5 der LStB laut Feldkatalog nicht verifiziert
+	// Nr. 3/4/5 der Lohnsteuerbescheinigung = Bruttoarbeitslohn/Lohnsteuer/Soli
+	// (BMF-Schreiben zur Ausstellung der Lohnsteuerbescheinigung, über
+	// Sekundärquellen und ELSTER-Forum bestätigt; Zeilen laut Vordruck 2025).
+	lstbSi := Sicher
 	r.zeile(Ergebniszeile{Formular: fN, Zeile: "5", Kennziffer: "110", Person: p, Bezeichnung: "Bruttoarbeitslohn", BetragCent: brutto, Herleitung: "Summe Lohnsteuerbescheinigung(en) Nr. 3", Rechtsgrundlage: "§ 19 EStG", Sicherheit: lstbSi})
 	r.zeile(Ergebniszeile{Formular: fN, Zeile: "6", Kennziffer: "140", Person: p, Bezeichnung: "Lohnsteuer", BetragCent: r.pos.summe("lstb.4", p), Herleitung: "Lohnsteuerbescheinigung Nr. 4", Rechtsgrundlage: "§ 36 Abs. 2 Nr. 2 EStG", Sicherheit: lstbSi})
 	if s := r.pos.summe("lstb.5", p); s > 0 {
@@ -412,23 +434,24 @@ func (r *rechnung) anlageN(p string, h hoErgebnis) (einkuenfte int64, aktiv bool
 		ep = d.oepnvKosten
 	}
 	ag17 := r.pos.summe("lstb.17", p)
-	if ag17 > 0 {
-		her += fmt.Sprintf("; abzüglich steuerfreie Arbeitgeberleistungen %s", euro(ag17))
+	ag18 := r.pos.summe("lstb.18", p)
+	if ag17+ag18 > 0 {
+		her += fmt.Sprintf("; abzüglich steuerfreie (%s) und pauschal besteuerte (%s) Arbeitgeberleistungen, höchstens bis 0 €", euro(ag17), euro(ag18))
 		epSi = schwaechste(epSi, rw.si("wk.ag_fahrtkostenersatz_mindert"))
 	}
-	epNetto := max(ep-ag17, 0)
+	epNetto := max(ep-ag17-ag18, 0)
 	if (d.kmVorRoh.Sign() > 0 && !d.kmVorRoh.IsInt()) || (d.kmNachRoh.Sign() > 0 && !d.kmNachRoh.IsInt()) {
 		r.hinweis("info", "Entfernung abgerundet", "Für die Entfernungspauschale zählen nur volle Kilometer; Nachkommastellen wurden abgerundet.")
 	}
 	if d.buerotageVor > 0 {
-		r.zeile(Ergebniszeile{Formular: fN, Zeile: "29", Kennziffer: "110", Person: p, Bezeichnung: "Erste Tätigkeitsstätte aufgesucht an Tagen" + umzugZusatz(f, true), Wert: itoa(d.buerotageVor) + " Tage", BetragCent: epVor, Herleitung: her, Rechtsgrundlage: rw.rg("wk.entfernung_satz"), Sicherheit: epSi})
+		r.zeile(Ergebniszeile{Formular: fN, Zeile: "29", Kennziffer: "110", Person: p, Bezeichnung: "Erste Tätigkeitsstätte aufgesucht an Tagen" + umzugZusatz(f, true), Wert: itoa(d.buerotageVor) + " Tage", Herleitung: "Nur die Anzahl der Tage eintragen (kein Eurobetrag). Rechnung: " + her, Rechtsgrundlage: rw.rg("wk.entfernung_satz"), Sicherheit: epSi})
 		r.zeile(Ergebniszeile{Formular: fN, Zeile: "30", Kennziffer: "111", Person: p, Bezeichnung: "Einfache Entfernung" + umzugZusatz(f, true), Wert: itoa(d.kmVor) + " km", Herleitung: "volle Kilometer", Rechtsgrundlage: rw.rg("wk.entfernung_satz"), Sicherheit: epSi})
 		if d.pkw {
 			r.zeile(Ergebniszeile{Formular: fN, Zeile: "31", Kennziffer: "112", Person: p, Bezeichnung: "davon mit eigenem/überlassenem Pkw", Wert: itoa(d.kmVor) + " km", Herleitung: "Angabe Verkehrsmittel", Rechtsgrundlage: rw.rg("wk.entfernung_hoechst"), Sicherheit: epSi})
 		}
 	}
 	if d.buerotageNach > 0 {
-		r.zeile(Ergebniszeile{Formular: fN, Zeile: "37", Kennziffer: "130", Person: p, Bezeichnung: "2. Angabe: Tätigkeitsstätte aufgesucht an Tagen" + umzugZusatz(f, false), Wert: itoa(d.buerotageNach) + " Tage", BetragCent: epNach, Herleitung: her + ". Zweite Angabe für den Zeitraum ab Umzug (gleiche Tätigkeitsstätte, neue Entfernung).", Rechtsgrundlage: rw.rg("wk.entfernung_umzug_aufteilung"), Sicherheit: schwaechste(epSi, StarkEvident)})
+		r.zeile(Ergebniszeile{Formular: fN, Zeile: "37", Kennziffer: "130", Person: p, Bezeichnung: "2. Angabe: Tätigkeitsstätte aufgesucht an Tagen" + umzugZusatz(f, false), Wert: itoa(d.buerotageNach) + " Tage", Herleitung: "Nur die Anzahl der Tage eintragen (kein Eurobetrag). Rechnung: " + her + ". Zweite Angabe für den Zeitraum ab Umzug (gleiche Tätigkeitsstätte, neue Entfernung).", Rechtsgrundlage: rw.rg("wk.entfernung_umzug_aufteilung"), Sicherheit: schwaechste(epSi, StarkEvident)})
 		r.zeile(Ergebniszeile{Formular: fN, Zeile: "38", Kennziffer: "131", Person: p, Bezeichnung: "2. Angabe: einfache Entfernung" + umzugZusatz(f, false), Wert: itoa(d.kmNach) + " km", Herleitung: "volle Kilometer", Rechtsgrundlage: rw.rg("wk.entfernung_umzug_aufteilung"), Sicherheit: schwaechste(epSi, StarkEvident)})
 		if d.pkw {
 			r.zeile(Ergebniszeile{Formular: fN, Zeile: "39", Kennziffer: "132", Person: p, Bezeichnung: "2. Angabe: davon mit eigenem/überlassenem Pkw", Wert: itoa(d.kmNach) + " km", Herleitung: "Angabe Verkehrsmittel", Rechtsgrundlage: rw.rg("wk.entfernung_hoechst"), Sicherheit: schwaechste(epSi, StarkEvident)})
@@ -438,21 +461,29 @@ func (r *rechnung) anlageN(p string, h hoErgebnis) (einkuenfte int64, aktiv bool
 		r.zeile(Ergebniszeile{Formular: fN, Zeile: "34", Kennziffer: "114", Person: p, Bezeichnung: "Aufwendungen für öffentliche Verkehrsmittel", BetragCent: d.oepnvKosten, Herleitung: "Angabe; wirkt nur, soweit höher als die Entfernungspauschale", Rechtsgrundlage: "§ 9 Abs. 2 Satz 2 EStG"})
 	}
 	if ag17 > 0 {
-		r.zeile(Ergebniszeile{Formular: fN, Zeile: "51", Kennziffer: "290", Person: p, Bezeichnung: "Steuerfreie Arbeitgeberleistungen für Fahrten", BetragCent: ag17, Herleitung: "Lohnsteuerbescheinigung Nr. 17", Rechtsgrundlage: rw.rg("wk.ag_fahrtkostenersatz_mindert"), Sicherheit: rw.si("wk.ag_fahrtkostenersatz_mindert")})
+		r.zeile(Ergebniszeile{Formular: fN, Zeile: "51", Kennziffer: "290", Person: p, Bezeichnung: "Steuerfreie Arbeitgeberleistungen für Fahrten", BetragCent: ag17, Herleitung: "Lohnsteuerbescheinigung Nr. 17; mindert die Entfernungspauschale", Rechtsgrundlage: rw.rg("wk.ag_fahrtkostenersatz_mindert"), Sicherheit: rw.si("wk.ag_fahrtkostenersatz_mindert")})
+	}
+	if ag18 > 0 {
+		r.zeile(Ergebniszeile{Formular: fN, Zeile: "51", Kennziffer: "295", Person: p, Bezeichnung: "Pauschal besteuerte Arbeitgeberleistungen für Fahrten", BetragCent: ag18, Herleitung: "Lohnsteuerbescheinigung Nr. 18; mindert die Entfernungspauschale", Rechtsgrundlage: rw.rg("wk.ag_fahrtkostenersatz_mindert"), Sicherheit: rw.si("wk.ag_fahrtkostenersatz_mindert")})
 	}
 	if bt := d.buerotageVor + d.buerotageNach + d.hoVor + d.hoNach; bt > rw.ganz("kalender.arbeitstage_sachsen") {
 		r.hinweis("pruefen", "Arbeitstage Person "+p, fmt.Sprintf("Büro- und Homeoffice-Tage (%d) übersteigen die %d möglichen Arbeitstage Mo–Fr 2026 in Sachsen. Bitte prüfen (Wochenendarbeit belegen).", bt, rw.ganz("kalender.arbeitstage_sachsen")))
 	}
 
-	// Gewerkschaft/Berufsverbände.
+	// Gewerkschaft (neben dem Pauschbetrag) und Berufsverbände.
 	gew := r.pos.summe("n.gewerkschaft", p)
-	if gew > 0 {
-		r.zeile(Ergebniszeile{Formular: fN, Zeile: "53", Kennziffer: "310", Person: p, Bezeichnung: "Beiträge zu Berufsverbänden", BetragCent: gew, Herleitung: "Summe Positionen n.gewerkschaft", Rechtsgrundlage: "§ 9 Abs. 1 Satz 3 Nr. 3 EStG"})
+	bv := r.pos.summe("n.berufsverband", p)
+	if gew+bv > 0 {
+		r.zeile(Ergebniszeile{Formular: fN, Zeile: "53", Kennziffer: "310", Person: p, Bezeichnung: "Beiträge zu Berufsverbänden (einschließlich Gewerkschaft)", BetragCent: gew + bv, Herleitung: fmt.Sprintf("Gewerkschaft %s (zusätzlich zum Arbeitnehmer-Pauschbetrag) + Berufsverbände %s", euro(gew), euro(bv)), Rechtsgrundlage: "§ 9 Abs. 1 Satz 3 Nr. 3 EStG; " + rw.rg("wk.gewerkschaft_neben_pauschbetrag"), Sicherheit: rw.si("wk.gewerkschaft_neben_pauschbetrag")})
 	}
-	// Arbeitsmittel.
-	am, amN := r.gwgFilter("n.arbeitsmittel", p, "Anlage N Person "+p)
-	if am > 0 {
-		r.zeile(Ergebniszeile{Formular: fN, Zeile: "54-56", Kennziffer: "320", Person: p, Bezeichnung: "Arbeitsmittel", BetragCent: am, Herleitung: fmt.Sprintf("%d Position(en) bis je %s; Art und Betrag je Zeile, Summe Zeile 56", amN, euro(rw.cent("wk.gwg_grenze"))), Rechtsgrundlage: rw.rg("wk.gwg_grenze"), Sicherheit: rw.si("wk.gwg_grenze")})
+	if gew > 0 {
+		r.hinweis("pruefen", "Gewerkschaftsbeiträge", "Seit 2026 werden Gewerkschaftsbeiträge zusätzlich zum Arbeitnehmer-Pauschbetrag berücksichtigt (§ 9a Satz 3 EStG). Bitte unter „Gewerkschaft“ nur echte Gewerkschaftsbeiträge erfassen; Kammer- und sonstige Verbandsbeiträge unter „Berufsverbände“ (ob Kammerbeiträge ebenfalls begünstigt sind, ist strittig).")
+	}
+	// Arbeitsmittel und Computer.
+	am, amN, amSi := r.gwgFilter("n.arbeitsmittel", p, "Anlage N Person "+p)
+	comp := r.pos.summe("n.computer", p)
+	if am+comp > 0 {
+		r.zeile(Ergebniszeile{Formular: fN, Zeile: "54-56", Kennziffer: "320", Person: p, Bezeichnung: "Arbeitsmittel", BetragCent: am + comp, Herleitung: fmt.Sprintf("%d Arbeitsmittel bis 800 € netto (geringwertige Wirtschaftsgüter) = %s; Computerhardware/Software (Nutzungsdauer 1 Jahr, voll im Anschaffungsjahr) = %s; Art und Betrag je Zeile, Summe Zeile 56", amN, euro(am), euro(comp)), Rechtsgrundlage: rw.rg("wk.gwg_grenze") + "; " + rw.rg("wk.computer_nutzungsdauer_jahre"), Sicherheit: schwaechste(amSi, rw.si("wk.computer_nutzungsdauer_jahre"))})
 		r.hinweis("pruefen", "Arbeitsmittel Nutzungsanteil", "Arbeitsmittel sind nur mit dem beruflichen Nutzungsanteil abziehbar. Bitte nur diesen Anteil als Position erfassen (keine Raumausstattung wie Tapete/Teppich – die gehört zum Arbeitszimmer).")
 	}
 	// Arbeitszimmer.
@@ -525,12 +556,10 @@ func (r *rechnung) anlageN(p string, h hoErgebnis) (einkuenfte int64, aktiv bool
 		r.hinweis("pruefen", "Verpflegungspauschalen", "Nur für die ersten drei Monate an derselben auswärtigen Tätigkeitsstätte (§ 9 Abs. 4a Satz 6 EStG).")
 	}
 
-	wk := epNetto + h.tpN + h.azN + gew + am + fb + weitere + reise + vpfNetto
+	wkOhneGew := epNetto + h.tpN + h.azN + bv + am + comp + fb + weitere + reise + vpfNetto
+	wk := wkOhneGew + gew
 	pausch := min(rw.cent("wk.arbeitnehmer_pauschbetrag"), brutto)
-	abziehbar := max(wk, pausch)
-	if wk <= pausch && gew > 0 {
-		r.hinweis("pruefen", "Gewerkschaftsbeiträge neben Pauschbetrag", fmt.Sprintf("Person %s: Werbungskosten liegen unter dem Pauschbetrag. Seit 2026 sind Gewerkschaftsbeiträge zusätzlich zum Pauschbetrag abziehbar (§ 9a Satz 3 EStG), Beiträge zu sonstigen Berufsverbänden nicht. Die Kategorie trennt beides nicht; gerechnet ist konservativ nur der Pauschbetrag. Möglicher Mehrabzug bis %s.", p, euro(gew)))
-	}
+	abziehbar := max(wkOhneGew, pausch) + gew
 	einkuenfte = brutto - abziehbar
 	r.kz("bruttolohn_"+p, brutto)
 	r.kz("entfernungspauschale_"+p, epNetto)
@@ -539,8 +568,12 @@ func (r *rechnung) anlageN(p string, h hoErgebnis) (einkuenfte int64, aktiv bool
 	r.kz("werbungskosten_"+p, wk)
 	r.kz("werbungskosten_abziehbar_"+p, abziehbar)
 	r.kz("einkuenfte_19_"+p, einkuenfte)
-	if wk <= pausch {
-		r.hinweis("info", "Arbeitnehmer-Pauschbetrag Person "+p, fmt.Sprintf("Werbungskosten %s liegen nicht über dem Pauschbetrag; angesetzt %s.", euro(wk), euro(pausch)))
+	if wkOhneGew <= pausch {
+		t := fmt.Sprintf("Werbungskosten %s liegen nicht über dem Pauschbetrag; angesetzt %s", euro(wkOhneGew), euro(pausch))
+		if gew > 0 {
+			t += fmt.Sprintf(" zuzüglich Gewerkschaftsbeiträge %s", euro(gew))
+		}
+		r.hinweis("info", "Arbeitnehmer-Pauschbetrag Person "+p, t+".")
 	}
 	return einkuenfte, true
 }
@@ -584,9 +617,14 @@ func (r *rechnung) euer(h hoErgebnis) int64 {
 	einnahmen := r.pos.summe("s.einnahmen", "*")
 	r.zeile(Ergebniszeile{Formular: fE, Zeile: "12", Person: p, Bezeichnung: "Betriebseinnahmen als umsatzsteuerlicher Kleinunternehmer", BetragCent: einnahmen, Herleitung: "Summe vereinnahmter Honorare (s.einnahmen)", Rechtsgrundlage: "§ 4 Abs. 3 EStG; § 19 UStG", Sicherheit: si})
 
-	gwg, gwgN := r.gwgFilter("s.arbeitsmittel", "*", "EÜR")
+	gwg, gwgN, gwgSi := r.gwgFilter("s.arbeitsmittel", "*", "EÜR")
 	if gwg > 0 {
-		r.zeile(Ergebniszeile{Formular: fE, Zeile: "36", Person: p, Bezeichnung: "Geringwertige Wirtschaftsgüter / Arbeitsmittel", BetragCent: gwg, Herleitung: fmt.Sprintf("%d Position(en) bis je %s (Kleinunternehmer: Bruttobetrag)", gwgN, euro(rw.cent("wk.gwg_grenze"))), Rechtsgrundlage: rw.rg("wk.gwg_grenze"), Sicherheit: schwaechste(si, rw.si("wk.gwg_grenze"))})
+		r.zeile(Ergebniszeile{Formular: fE, Zeile: "36", Person: p, Bezeichnung: "Geringwertige Wirtschaftsgüter / Arbeitsmittel", BetragCent: gwg, Herleitung: fmt.Sprintf("%d Position(en) bis 800 € ohne Umsatzsteuer (Kleinunternehmer: Grenze gilt für den Nettobetrag, abgezogen wird der gezahlte Bruttobetrag)", gwgN), Rechtsgrundlage: rw.rg("wk.gwg_grenze"), Sicherheit: schwaechste(si, gwgSi)})
+	}
+	scomp := r.pos.summe("s.computer", "*")
+	if scomp > 0 {
+		r.zeile(Ergebniszeile{Formular: fE, Zeile: "31-33", Person: p, Bezeichnung: "Absetzung für Abnutzung: Computerhardware/Software (Nutzungsdauer 1 Jahr)", BetragCent: scomp, Herleitung: "Summe s.computer, im Anschaffungsjahr voll abgezogen; genaue AfA-Zeile im Formular prüfen", Rechtsgrundlage: rw.rg("wk.computer_nutzungsdauer_jahre"), Sicherheit: schwaechste(si, StarkEvident)})
+		r.hinweis("pruefen", "EÜR Computer", "Computerhardware und Software sind trotz Sofortabzug in der Anlage AVEÜR zu erfassen (Anleitung EÜR 2025, Zeilen 31-38). Nur den betrieblichen Nutzungsanteil erfassen.")
 	}
 	fahrt := r.pos.summe("s.fahrtkosten", "*")
 	if fahrt > 0 {
@@ -610,7 +648,7 @@ func (r *rechnung) euer(h hoErgebnis) int64 {
 	if h.tpE > 0 {
 		r.zeile(Ergebniszeile{Formular: fE, Zeile: "66", Person: p, Bezeichnung: "Tagespauschale häusliche Wohnung", Wert: itoa(h.tageE) + " Tage", BetragCent: h.tpE, Herleitung: h.tpHerleitung, Rechtsgrundlage: rw.rg("wk.homeoffice_tag"), Sicherheit: rw.si("wk.homeoffice_tag")})
 	}
-	ausgaben := gwg + fahrt + uebrige + bewAbz + h.azE + h.tpE
+	ausgaben := gwg + scomp + fahrt + uebrige + bewAbz + h.azE + h.tpE
 	gewinn := einnahmen - ausgaben
 	r.zeile(Ergebniszeile{Formular: fE, Zeile: "95", Person: p, Bezeichnung: "Gewinn/Verlust", BetragCent: gewinn, Herleitung: fmt.Sprintf("Einnahmen %s − Ausgaben %s", euro(einnahmen), euro(ausgaben)), Rechtsgrundlage: "§ 4 Abs. 3 EStG", Sicherheit: si})
 	r.zeile(Ergebniszeile{Formular: anlage, Person: p, Bezeichnung: "Feld „Gewinn laut Anlage EÜR“ (keine Zeilennummer verfügbar)", BetragCent: gewinn, Herleitung: "Übernahme aus Anlage EÜR Zeile 95", Rechtsgrundlage: map[bool]string{true: "§ 18 EStG", false: "§ 15 / § 18 EStG"}[anlage == "Anlage S"], Sicherheit: Unsicher})
@@ -620,7 +658,7 @@ func (r *rechnung) euer(h hoErgebnis) int64 {
 	r.kz("tagespauschale_EUER", h.tpE)
 	r.kz("arbeitszimmer_EUER", h.azE)
 
-	r.hinweis("info", "Betriebsausgabenpauschale", "Die Betriebsausgabenpauschale (25 %, höchstens 614 €, H 18.2 EStH) gilt nur für nebenberuflich künstlerische, schriftstellerische oder Lehrtätigkeit, nicht für gewerbliche Moderation; sie wird nicht gerechnet.")
+	r.hinweis("info", "Betriebsausgabenpauschale", fmt.Sprintf("Die Betriebsausgabenpauschale für Nebentätigkeiten (%s %%, höchstens %s; Anleitung EÜR 2025 Zeile 24, BMF 06.04.2023) gilt nur für wissenschaftliche, künstlerische oder schriftstellerische Nebentätigkeit sowie nebenamtliche Lehr- und Prüfungstätigkeit, nicht für gewerbliche Moderation; sie wird nicht gerechnet.", rw.wert("ba.pauschale_nebenberuflich_prozent").Wert, euro(rw.cent("ba.pauschale_nebenberuflich_hoechst"))))
 	if f.sArt == optParagraph15 && gewinn > rw.cent("gew.freibetrag") {
 		r.hinweis("warnung", "Gewerbesteuer", "Gewinn über dem Gewerbesteuer-Freibetrag von 24.500 €: Gewerbesteuer und Ermäßigung nach § 35 EStG werden nicht gerechnet.")
 	}
@@ -735,46 +773,44 @@ func (r *rechnung) sonderausgaben(gde int64) int64 {
 		r.zeile(Ergebniszeile{Formular: fS, Zeile: "7", Kennziffer: "127 / 128", Bezeichnung: "Spenden an politische Parteien", BetragCent: ps, Herleitung: fmt.Sprintf("50 %% Steuerermäßigung (höchstens %s), darüber hinaus Sonderausgaben %s", euro(rw.cent("sa.parteispenden_ermaessigung_hoechst_zusammen")), euro(parteiSA)), Rechtsgrundlage: "§ 34g Satz 2 EStG; § 10b Abs. 2 EStG"})
 	}
 
-	// Kinderbetreuung und Schulgeld.
+	// Kinderbetreuung und Schulgeld (Höchstbeträge je Kind; nur Kinder mit
+	// Anspruch auf Kindergeld/Freibetrag).
 	const fK = "Anlage Kind"
 	stichtagJahresanfang := time.Date(f.jahr, 1, 1, 0, 0, 0, 0, time.UTC)
-	var betreuungsKinder, alleKinder int64
+	var betreuungsKinder, schulKinder []kindDaten
 	for _, k := range f.kinder {
-		alleKinder++
+		if r.kindMonate(k) == 0 {
+			continue
+		}
+		schulKinder = append(schulKinder, k)
 		alter14 := k.geburt.AddDate(int(rw.ganz("kind.betreuung_alter")), 0, 0)
-		if !k.haushalt {
+		if !k.haushalt || !alter14.After(stichtagJahresanfang) {
 			continue
 		}
-		if !alter14.After(stichtagJahresanfang) {
-			continue
-		}
-		betreuungsKinder++
+		betreuungsKinder = append(betreuungsKinder, k)
 		if alter14.Year() == f.jahr {
 			r.hinweis("pruefen", fmt.Sprintf("Kind %d wird 14", k.nr), "Kinderbetreuungskosten sind nur bis zum 14. Geburtstag abziehbar; bitte nur Aufwendungen bis dahin erfassen.")
 		}
 	}
-	kb := r.pos.summe("kind.betreuung", "*")
 	kbAbz := int64(0)
-	if kb > 0 {
-		if betreuungsKinder == 0 {
-			r.hinweis("warnung", "Kinderbetreuung nicht angesetzt", "Kinderbetreuungskosten erfasst, aber kein Kind unter 14 Jahren im Haushalt angegeben (Ausnahme Behinderung wird nicht gerechnet).")
+	if kb := r.pos.summe("kind.betreuung", "*"); kb > 0 {
+		if len(betreuungsKinder) == 0 {
+			r.hinweis("warnung", "Kinderbetreuung nicht angesetzt", "Kinderbetreuungskosten erfasst, aber kein Kind unter 14 Jahren im Haushalt mit Anspruch auf Kindergeld/Freibetrag angegeben (Ausnahme Behinderung wird nicht gerechnet).")
 		} else {
-			kbAbz = min(prozentAb(kb, rw.rat("kind.betreuung_prozent")), betreuungsKinder*rw.cent("kind.betreuung_hoechst"))
-			r.zeile(Ergebniszeile{Formular: fK, Zeile: "67", Kennziffer: "51", Bezeichnung: "Kinderbetreuungskosten (Gesamtaufwendungen der Eltern)", BetragCent: kb, Herleitung: fmt.Sprintf("80 %% von %s, höchstens %d × %s = abziehbar %s", euro(kb), betreuungsKinder, euro(rw.cent("kind.betreuung_hoechst")), euro(kbAbz)), Rechtsgrundlage: rw.rg("kind.betreuung_prozent"), Sicherheit: rw.si("kind.betreuung_prozent")})
+			var her string
+			kbAbz, her = r.jeKind("kind.betreuung", betreuungsKinder, rw.rat("kind.betreuung_prozent"), rw.cent("kind.betreuung_hoechst"), "Kinderbetreuung")
+			r.zeile(Ergebniszeile{Formular: fK, Zeile: "67", Kennziffer: "51", Bezeichnung: "Kinderbetreuungskosten (Gesamtaufwendungen der Eltern, je Kind eigene Anlage Kind)", BetragCent: kb, Herleitung: her, Rechtsgrundlage: rw.rg("kind.betreuung_prozent"), Sicherheit: rw.si("kind.betreuung_prozent")})
 			r.hinweis("pruefen", "Kinderbetreuung Nachweis", "Rechnung und unbare Zahlung nötig; keine Verpflegung, kein Unterricht, keine Freizeitbetätigung. Steuerfreie Arbeitgeberzuschüsse (Anlage Kind Zeile 68) mindern den Betrag.")
-			if betreuungsKinder > 1 {
-				r.hinweis("pruefen", "Kinderbetreuung je Kind", "Bei mehreren Kindern sind die Kosten je Kind auf der jeweiligen Anlage Kind einzutragen; der Höchstbetrag gilt je Kind.")
-			}
 		}
 	}
-	sg := r.pos.summe("kind.schulgeld", "*")
 	sgAbz := int64(0)
-	if sg > 0 {
-		if alleKinder == 0 {
-			r.hinweis("warnung", "Schulgeld nicht angesetzt", "Schulgeld erfasst, aber kein Kind angegeben.")
+	if sg := r.pos.summe("kind.schulgeld", "*"); sg > 0 {
+		if len(schulKinder) == 0 {
+			r.hinweis("warnung", "Schulgeld nicht angesetzt", "Schulgeld erfasst, aber kein Kind mit Anspruch auf Kindergeld/Freibetrag angegeben.")
 		} else {
-			sgAbz = min(prozentAb(sg, rw.rat("kind.schulgeld_prozent")), alleKinder*rw.cent("kind.schulgeld_hoechst"))
-			r.zeile(Ergebniszeile{Formular: fK, Zeile: "57", Kennziffer: "56", Bezeichnung: "Schulgeld (ohne Beherbergung, Betreuung, Verpflegung)", BetragCent: sg, Herleitung: fmt.Sprintf("30 %% von %s = abziehbar %s", euro(sg), euro(sgAbz)), Rechtsgrundlage: rw.rg("kind.schulgeld_prozent"), Sicherheit: rw.si("kind.schulgeld_prozent")})
+			var her string
+			sgAbz, her = r.jeKind("kind.schulgeld", schulKinder, rw.rat("kind.schulgeld_prozent"), rw.cent("kind.schulgeld_hoechst"), "Schulgeld")
+			r.zeile(Ergebniszeile{Formular: fK, Zeile: "57", Kennziffer: "56", Bezeichnung: "Schulgeld (ohne Beherbergung, Betreuung, Verpflegung; je Kind eigene Anlage Kind)", BetragCent: sg, Herleitung: her, Rechtsgrundlage: rw.rg("kind.schulgeld_prozent"), Sicherheit: rw.si("kind.schulgeld_prozent")})
 		}
 	}
 
@@ -808,7 +844,12 @@ func (r *rechnung) agb(gde int64) int64 {
 		return 0
 	}
 	var proz [3]int64
-	n := len(r.f.kinder)
+	var n int // nur Kinder mit Anspruch auf Kindergeld/Freibetrag (§ 33 Abs. 3 EStG)
+	for _, k := range r.f.kinder {
+		if r.kindMonate(k) > 0 {
+			n++
+		}
+	}
 	switch {
 	case n == 0:
 		proz = rw.stufen("agb.prozent_ohne_kind_splitting")
@@ -852,13 +893,7 @@ func (r *rechnung) kinder(zvEOhne int64) (zvE, kfbAlle, hinzu int64) {
 	kgMonat := rw.cent("kind.kindergeld_monat")
 	var kgSumme int64
 	for _, k := range f.kinder {
-		monate := k.monate
-		if monate < 0 {
-			monate = r.monateAusGeburt(k)
-			if monate < 0 {
-				continue
-			}
-		}
+		monate := r.kindMonate(k)
 		if monate == 0 {
 			continue
 		}
@@ -949,4 +984,64 @@ func (r *rechnung) ermaessigungenRoh(tarif int64) (e34g, e35a int64, zeilen []Er
 		zeilen = append(zeilen, Ergebniszeile{Formular: fH, Zeile: t.z, Kennziffer: t.kz, Bezeichnung: t.bez, BetragCent: b, Herleitung: fmt.Sprintf("20 %% von %s = %s, höchstens %s; wirksam %s", euro(b), euro(prozentAb(b, rw.rat(t.p))), euro(rw.cent(t.h)), euro(wirk)), Rechtsgrundlage: rw.rg(t.p), Sicherheit: rw.si(t.p)})
 	}
 	return e34g, e35a, zeilen
+}
+
+// kindMonate liefert die Monate mit Anspruch auf Kindergeld (0 = Kind wird
+// nicht berücksichtigt).
+func (r *rechnung) kindMonate(k kindDaten) int64 {
+	if k.monate >= 0 {
+		return k.monate
+	}
+	return max(r.monateAusGeburt(k), 0)
+}
+
+var kindMarke = regexp.MustCompile(`(?i)\bkind\s*(\d)\b`)
+
+// jeKind berechnet einen Sonderausgabenabzug mit Höchstbetrag je Kind.
+// Positionen werden über „Kind N“ in Bezeichnung oder Notiz einem Kind
+// zugeordnet; bei genau einem berechtigten Kind ist die Zuordnung eindeutig.
+// Nicht zuordenbare Beträge bei mehreren Kindern werden so angesetzt, wie es
+// bei jeder denkbaren Verteilung mindestens zulässig ist.
+func (r *rechnung) jeKind(kat string, kinder []kindDaten, prozent *big.Rat, hoechst int64, thema string) (abz int64, her string) {
+	berechtigt := map[int]bool{}
+	for _, k := range kinder {
+		berechtigt[k.nr] = true
+	}
+	proKind := map[int]int64{}
+	var offen int64
+	for _, p := range r.pos.liste(kat, "*") {
+		nr := 0
+		if m := kindMarke.FindStringSubmatch(p.Bezeichnung + " " + p.Notiz); m != nil {
+			nr = int(m[1][0] - '0')
+		}
+		switch {
+		case nr == 0 && len(kinder) == 1:
+			proKind[kinder[0].nr] += p.BetragCent
+		case nr == 0:
+			offen += p.BetragCent
+		case berechtigt[nr]:
+			proKind[nr] += p.BetragCent
+		default:
+			r.hinweis("warnung", thema+" nicht angesetzt", fmt.Sprintf("%q (%s) ist Kind %d zugeordnet, für das die Voraussetzungen nicht angegeben sind.", p.Bezeichnung, euro(p.BetragCent), nr))
+		}
+	}
+	f := func(x int64) int64 { return min(prozentAb(x, prozent), hoechst) }
+	var teile []string
+	for _, k := range kinder {
+		abz += f(proKind[k.nr])
+		teile = append(teile, fmt.Sprintf("Kind %d: %s %% von %s, höchstens %s = %s", k.nr, prozent.FloatString(0), euro(proKind[k.nr]), euro(hoechst), euro(f(proKind[k.nr]))))
+	}
+	if offen > 0 {
+		mindest := int64(-1)
+		for _, k := range kinder {
+			v := abz - f(proKind[k.nr]) + f(proKind[k.nr]+offen)
+			if mindest < 0 || v < mindest {
+				mindest = v
+			}
+		}
+		abz = mindest
+		teile = append(teile, fmt.Sprintf("keinem Kind zugeordnet %s: mit der ungünstigsten Verteilung gerechnet", euro(offen)))
+		r.hinweis("pruefen", thema+" je Kind", fmt.Sprintf("%s über %s ist keinem Kind zugeordnet. Der Höchstbetrag gilt je Kind; bitte „Kind 1“, „Kind 2“ … in Bezeichnung oder Notiz der Position angeben. Bis dahin ist der Mindestabzug angesetzt.", thema, euro(offen)))
+	}
+	return abz, strings.Join(teile, "; ") + "; abziehbar " + euro(abz)
 }

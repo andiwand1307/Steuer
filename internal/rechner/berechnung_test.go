@@ -57,7 +57,8 @@ func TestEntfernungspauschaleUmzug(t *testing.T) {
 		t.Errorf("Entfernungspauschale = %d, erwartet 106400", got)
 	}
 	z, ok := zeileSuchen(e, "Anlage N", "37", "A")
-	if !ok || z.BetragCent != 30400 || z.Sicherheit != StarkEvident {
+	// Zeile 37 nimmt nur Tage auf, keinen Eurobetrag.
+	if !ok || z.BetragCent != 0 || z.Wert != "80 Tage" || z.Sicherheit != StarkEvident {
 		t.Errorf("Zeile 37 (zweite Angabe nach Umzug) falsch: %+v", z)
 	}
 	if !hatHinweis(e, "info", "volle Kilometer") {
@@ -175,19 +176,49 @@ func TestArbeitszimmerUmzugsjahr(t *testing.T) {
 	}
 }
 
-func TestArbeitszimmerFallgruppe3(t *testing.T) {
+// Haupttätigkeit (Anstellung) mit Mittelpunkt zu Hause, Nebentätigkeit außer
+// Haus: vertretbar (BFH IV R 19/03), aber nur auf ausdrückliche Wahl.
+func TestArbeitszimmerHaupttaetigkeitZuHause(t *testing.T) {
 	ang := azAngaben()
 	ang["az.mittelpunkt_nebentaetigkeit"] = "nein"
+	p := []modell.Position{pos("A", "lstb.3", 5000000), pos("", "s.einnahmen", 200000)}
+	e := rechne(t, ang, p)
+	if e.Kennzahlen["arbeitszimmer_N_A"]+e.Kennzahlen["arbeitszimmer_EUER"] != 0 {
+		t.Error("automatisch darf in dieser Fallgruppe kein Arbeitszimmer angesetzt werden")
+	}
+	gefunden := false
+	for _, v := range e.Varianten {
+		if strings.HasPrefix(v.Titel, "Jahrespauschale") && strings.Contains(v.Beschreibung, "Risiko mittel") && strings.Contains(v.Beschreibung, "Arbeitgeberbestätigung") {
+			gefunden = true
+		}
+	}
+	if !gefunden {
+		t.Errorf("Variante Jahrespauschale mit Risiko mittel und Nachweisliste fehlt: %+v", e.Varianten)
+	}
+	// Ausdrücklich gewählt: 1.260 − 4 × 105 = 840 € (aufgeteilt auf N/EÜR), mit Warnung.
+	ang["az.ansatz"] = optJahrespauschale
+	e = rechne(t, ang, p)
+	if got := e.Kennzahlen["arbeitszimmer_N_A"] + e.Kennzahlen["arbeitszimmer_EUER"]; got != 84000 {
+		t.Errorf("gewählte Jahrespauschale = %d, erwartet 84000", got)
+	}
+	if !hatHinweis(e, "warnung", "eigenes Risiko") || !hatHinweis(e, "info", "IV R 19/03") {
+		t.Error("Warnung oder Begründung fehlt")
+	}
+}
+
+func TestArbeitszimmerFallgruppe3(t *testing.T) {
+	ang := azAngaben()
+	ang["az.mittelpunkt_anstellung"] = "nein"
+	ang["az.mittelpunkt_nebentaetigkeit"] = "ja"
 	ang["az.ansatz"] = optJahrespauschale
 	p := []modell.Position{pos("A", "lstb.3", 5000000), pos("", "s.einnahmen", 200000)}
 	e := rechne(t, ang, p)
 	if e.Kennzahlen["arbeitszimmer_N_A"] != 0 || e.Kennzahlen["arbeitszimmer_EUER"] != 0 {
-		t.Error("Fallgruppe 3 ohne einheitlichen Wirkungskreis darf kein Arbeitszimmer ansetzen")
+		t.Error("Mittelpunkt nur der Nebentätigkeit ohne einheitlichen Wirkungskreis darf kein Arbeitszimmer ansetzen")
 	}
 	if !hatHinweis(e, "warnung", "nicht zulässig") {
 		t.Error("Warnung fehlt")
 	}
-	// Variante wird trotzdem mit Risikohinweis gezeigt.
 	gefunden := false
 	for _, v := range e.Varianten {
 		if strings.HasPrefix(v.Titel, "Jahrespauschale") && strings.Contains(v.Beschreibung, "regelmäßig NICHT") {
@@ -201,6 +232,22 @@ func TestArbeitszimmerFallgruppe3(t *testing.T) {
 	ang["az.vorhanden"] = "nein"
 	if e = rechne(t, ang, p); len(e.Varianten) != 1 {
 		t.Errorf("ohne Raum nur Tagespauschale erwartet, %d Varianten", len(e.Varianten))
+	}
+}
+
+// Tagespauschale in die EÜR nur für Tage, an denen auch die Nebentätigkeit
+// zu Hause ausgeübt wurde.
+func TestTagespauschaleZuordnungEUER(t *testing.T) {
+	ang := map[string]string{"a.hotage_vor": "100", "ho.zuordnung": optGanzEUER}
+	p := []modell.Position{pos("A", "lstb.3", 5000000), pos("", "s.einnahmen", 300000)}
+	e := rechne(t, ang, p)
+	if e.Kennzahlen["tagespauschale_EUER"] != 0 || e.Kennzahlen["tagespauschale_N_A"] != 60000 {
+		t.Errorf("ohne Nebentätigkeits-Tage: EÜR %d, N %d", e.Kennzahlen["tagespauschale_EUER"], e.Kennzahlen["tagespauschale_N_A"])
+	}
+	ang["a.hotage_mit_neben"] = "30"
+	e = rechne(t, ang, p)
+	if e.Kennzahlen["tagespauschale_EUER"] != 18000 || e.Kennzahlen["tagespauschale_N_A"] != 42000 {
+		t.Errorf("30 Nebentätigkeits-Tage: EÜR %d, N %d", e.Kennzahlen["tagespauschale_EUER"], e.Kennzahlen["tagespauschale_N_A"])
 	}
 }
 
@@ -266,7 +313,8 @@ func TestGesamtfall(t *testing.T) {
 		"a.buerotage_vor": "40", "a.km_vor": "25",
 		"a.buerotage_nach": "20", "a.km_nach": "15",
 		"a.hotage_vor": "50", "a.hotage_umzugsmonat": "5", "a.hotage_nach": "120",
-		"b.buerotage_vor": "80", "b.km_vor": "10",
+		"a.hotage_mit_neben": "100",
+		"b.buerotage_vor":    "80", "b.km_vor": "10",
 		"b.buerotage_nach": "120", "b.km_nach": "8",
 		"az.vorhanden": "ja", "az.ausschliesslich_beruflich": "ja",
 		"az.mittelpunkt_anstellung": "ja", "az.mittelpunkt_nebentaetigkeit": "nein",
@@ -292,19 +340,20 @@ func TestGesamtfall(t *testing.T) {
 
 	erwartet := map[string]int64{
 		// A: Entfernung 40×25×0,38 = 380 + 20×15×0,38 = 114 → 494 €.
-		// Tagespauschale 170 Tage × 6 = 1.020 € – optimiert ganz in die EÜR,
-		// weil die übrigen Werbungskosten (494 €) unter dem Pauschbetrag liegen.
+		// Tagespauschale 170 Tage × 6 = 1.020 €; optimiert der EÜR zugeordnet,
+		// aber nur für die 100 Tage mit Nebentätigkeit zu Hause (600 €),
+		// Rest 70 Tage (420 €) Anlage N. WK 914 € < 1.230 € Pauschbetrag.
 		"entfernungspauschale_A":     49400,
-		"tagespauschale_N_A":         0,
-		"tagespauschale_EUER":        102000,
+		"tagespauschale_N_A":         42000,
+		"tagespauschale_EUER":        60000,
 		"werbungskosten_abziehbar_A": 123000,
 		"einkuenfte_19_A":            4877000,
 		// B: 80×10×0,38 = 304 + 120×8×0,38 = 364,80 → 668,80 € < 1.230 €
 		"entfernungspauschale_B": 66880,
 		"einkuenfte_19_B":        2877000,
-		// EÜR: 3.000 − 200 − 70 % von 100 − 1.020 = 1.710 €
-		"gewinn_nebentaetigkeit": 171000,
-		"summe_einkuenfte":       7925000,
+		// EÜR: 3.000 − 200 − 70 % von 100 − 600 = 2.130 €
+		"gewinn_nebentaetigkeit": 213000,
+		"summe_einkuenfte":       7967000,
 		"haerteausgleich":        0,
 		// Altersvorsorge 14.880 − 7.440 AG-Anteil = 7.440 €
 		"vorsorge_altersvorsorge": 744000,
@@ -313,29 +362,30 @@ func TestGesamtfall(t *testing.T) {
 		// Spenden 100 + Kinderbetreuung 80 % von 2.000 = 1.600 → 1.700 €
 		"sonderausgaben_uebrige": 170000,
 		"sonderausgaben":         1518800,
-		// zumutbare Belastung 306,80 + 1.073,70 + 1.124,80 = 2.505,30 € > 300 €
-		"zumutbare_belastung": 250530,
+		// zumutbare Belastung 306,80 + 1.073,70 + 4 % × 28.540 = 1.141,60 → 2.522,10 € > 300 €
+		"zumutbare_belastung": 252210,
 		"agb_abziehbar":       0,
-		"einkommen":           6406200,
-		// Splitting(64.062) = 9.592; Splitting(54.306) = 6.856; Entlastung 2.736 < 3.108 → Kindergeld
+		"einkommen":           6448200,
+		// Splitting(64.482) = 2 × 4.857 = 9.714; Splitting(54.726) = 6.970;
+		// Entlastung 2.744 < 3.108 → Kindergeld
 		"kindergeld_hinzurechnung": 0,
-		"zve":                      6406200,
-		"tarifliche_est":           959200,
+		"zve":                      6448200,
+		"tarifliche_est":           971400,
 		// Handwerker 20 % von 500 = 100 €
 		"ermaessigung_35a": 10000,
-		// Soli-Bemessung 6.856 − 100 = 6.756 € < 40.700 €
-		"soli_bemessungsgrundlage": 675600,
+		// Soli-Bemessung 6.970 − 100 = 6.870 € < 40.700 €
+		"soli_bemessungsgrundlage": 687000,
 	}
 	for k, v := range erwartet {
 		if got := e.Kennzahlen[k]; got != v {
 			t.Errorf("%s = %d, erwartet %d", k, got, v)
 		}
 	}
-	if e.ZvECent != 6406200 || e.EStCent != 949200 || e.SoliCent != 0 {
+	if e.ZvECent != 6448200 || e.EStCent != 961400 || e.SoliCent != 0 {
 		t.Errorf("zvE %d, ESt %d, Soli %d", e.ZvECent, e.EStCent, e.SoliCent)
 	}
-	// Lohnsteuer 9.000 € − ESt 9.492 € = Nachzahlung 492 €
-	if e.VorausgezahltCent != 900000 || e.ErstattungCent != -49200 {
+	// Lohnsteuer 9.000 € − ESt 9.614 € = Nachzahlung 614 €
+	if e.VorausgezahltCent != 900000 || e.ErstattungCent != -61400 {
 		t.Errorf("vorausgezahlt %d, Erstattung %d", e.VorausgezahltCent, e.ErstattungCent)
 	}
 	// Fallgruppe 3: Tagespauschale gerechnet, Arbeitszimmer nur als Variante
@@ -354,7 +404,7 @@ func TestGesamtfall(t *testing.T) {
 			t.Errorf("unsichere Zeile ohne Prüfhinweis: %s %s", z.Formular, z.Zeile)
 		}
 	}
-	if z, ok := zeileSuchen(e, "Anlage S", "", "A"); !ok || z.BetragCent != 171000 {
+	if z, ok := zeileSuchen(e, "Anlage S", "", "A"); !ok || z.BetragCent != 213000 {
 		t.Errorf("Anlage S Gewinn fehlt: %+v", z)
 	}
 }

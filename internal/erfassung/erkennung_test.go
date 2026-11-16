@@ -31,7 +31,7 @@ func TestLohnsteuerbescheinigung(t *testing.T) {
 		t.Errorf("Aussteller = %q", e.Beleg.Aussteller)
 	}
 	want := map[string]int64{
-		"lstb.3": 4825000, "lstb.4": 712300, "lstb.17": 31250, "lstb.22a": 448725,
+		"lstb.3": 4825000, "lstb.4": 712300, "lstb.17": 31250, "lstb.18": 12000, "lstb.22a": 448725,
 		"lstb.23a": 448725, "lstb.25": 394013, "lstb.26": 82050, "lstb.27": 62725,
 	}
 	got := posMap(e)
@@ -135,7 +135,7 @@ func TestRechnungArbeitsmittel(t *testing.T) {
 	if e.Beleg.Art != ArtRechnung || e.Beleg.BetragCent != 119000 || e.Beleg.Hinweis != "" {
 		t.Errorf("Beleg: %+v", e.Beleg)
 	}
-	if p := posMap(e)["n.arbeitsmittel"]; p.BetragCent != 119000 || p.Notiz == "" {
+	if p := posMap(e)["n.computer"]; p.BetragCent != 119000 || p.Notiz == "" {
 		t.Errorf("Position: %+v", p)
 	}
 }
