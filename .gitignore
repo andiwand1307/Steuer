@@ -1,0 +1,6 @@
+# Persönliche Unterlagen und Daten gehören nie ins Repository
+/unterlagen/
+/daten/
+*.db
+*.sqlite
+*.exe
